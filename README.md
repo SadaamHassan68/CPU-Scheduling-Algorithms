@@ -31,15 +31,7 @@ You can enter process details, calculate waiting and turnaround times, and view 
 4. **Other Tools:**
    - Use the extra buttons to calculate only waiting time, turnaround time, or averages as needed.
 
-## Example
-For Priority Scheduling:
-| Process | Burst Time | Priority |
-|---------|------------|----------|
-| P1      | 10         | 3        |
-| P2      | 1          | 1        |
-| P3      | 2          | 4        |
 
-After calculation, the table will be sorted by priority (and FCFS for ties), and waiting/turnaround times will be shown with step-by-step explanations.
 
 ## Setup Instructions
 

@@ -1,0 +1,559 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>CPU Scheduling Algorithms</h2>
+<form method="post" id="schedulingForm">
+    <div class="mb-3">
+        <label for="algorithm" class="form-label">Select Algorithm:</label>
+        <select class="form-select" id="algorithm" name="algorithm" required>
+            <option value="fcfs">First Come First Serve (FCFS)</option>
+            <option value="sjf">Shortest Job First (SJF)</option>
+            <option value="priority">Priority Scheduling</option>
+        </select>
+    </div>
+    <table class="table" id="processTable">
+        <thead>
+            <tr>
+                <th>Process</th>
+                <th>Burst Time</th>
+                <th class="priority-col" style="display:none;">Priority</th>
+                <th class="wt-col" style="display:none;">Waiting Time</th>
+                <th>Remove</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><input type="text" name="process[]" class="form-control" required></td>
+                <td><input type="number" name="burst[]" class="form-control" min="1" required></td>
+                <td class="priority-col" style="display:none;"><input type="number" name="priority[]" class="form-control"></td>
+                <td class="wt-col" style="display:none;"><input type="number" class="form-control" readonly></td>
+                <td><button type="button" class="btn btn-danger btn-sm remove-row">X</button></td>
+            </tr>
+        </tbody>
+    </table>
+    <button type="button" class="btn btn-secondary" id="addRow">Add Process</button>
+    <button type="submit" class="btn btn-primary">Calculate</button>
+</form>
+
+<div class="mt-4">
+    <button class="btn btn-info" type="button" onclick="calculateColumn('waiting')">Calculate Waiting Time</button>
+    <button class="btn btn-info" type="button" id="burstBtn" onclick="calculateColumn('burst')">Calculate Burst Time</button>
+    <button class="btn btn-info" type="button" onclick="calculateAverage('waiting')">Calculate Average Waiting Time</button>
+    <button class="btn btn-info" type="button" onclick="calculateAverage('burst')">Calculate Average Burst Time</button>
+</div>
+
+<!-- Modal for showing calculation steps -->
+<div class="modal fade" id="calcModal" tabindex="-1" aria-labelledby="calcModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="calcModalLabel">Calculation Steps</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="calcModalBody">
+        <!-- Steps will be inserted here -->
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# 
+{% if results %}
+<hr>
+<h4>Results</h4>
+<table class="table table-bordered">
+    <thead>
+        <tr>
+            <th>Process</th>
+            <th>Burst Time</th>
+            {% if algorithm == 'priority' %}<th>Priority</th>{% endif %}
+            <th>Waiting Time</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for row in results %}
+        <tr>
+            <td>{{ row.process }}</td>
+            <td>{{ row.burst }}</td>
+            {% if algorithm == 'priority' %}<td>{{ row.priority }}</td>{% endif %}
+            <td>{{ row.waiting }}</td>
+        </tr>
+        {% endfor %}
+        <tr class="table-info">
+            <td><b>Average</b></td>
+            <td><b>{{ avg_burst }}</b></td>
+            {% if algorithm == 'priority' %}<td></td>{% endif %}
+            <td><b>{{ avg_waiting }}</b></td>
+        </tr>
+    </tbody>
+</table>
+{% endif %}
+#}
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+// Show/hide Priority column based on algorithm
+function updatePriorityColumn() {
+    var algo = document.getElementById('algorithm').value;
+    var show = algo === 'priority';
+    document.querySelectorAll('.priority-col').forEach(function(col) {
+        col.style.display = show ? '' : 'none';
+        if (col.querySelector('input')) {
+            col.querySelector('input').required = show;
+        }
+    });
+}
+document.getElementById('algorithm').addEventListener('change', updatePriorityColumn);
+window.onload = updatePriorityColumn;
+
+// Add/remove rows
+var addRowBtn = document.getElementById('addRow');
+addRowBtn.addEventListener('click', function() {
+    var table = document.getElementById('processTable').getElementsByTagName('tbody')[0];
+    var newRow = table.rows[0].cloneNode(true);
+    newRow.querySelectorAll('input').forEach(input => input.value = '');
+    table.appendChild(newRow);
+    updatePriorityColumn();
+});
+document.getElementById('processTable').addEventListener('click', function(e) {
+    if (e.target && e.target.classList.contains('remove-row')) {
+        var row = e.target.closest('tr');
+        var table = row.parentNode;
+        if (table.rows.length > 1) {
+            row.remove();
+        }
+    }
+});
+
+// Calculate and show Waiting Time for FCFS
+function calculateFCFSWaitingTime(returnStepsOnly = false) {
+    // Show WT column
+    document.querySelectorAll('.wt-col').forEach(function(col) {
+        col.style.display = '';
+    });
+    
+    // Get all processes and burst times
+    var rows = document.querySelectorAll('#processTable tbody tr');
+    var processes = [];
+    var bursts = [];
+    var waitingTimes = [];
+    
+    for (var i = 0; i < rows.length; i++) {
+        var processInput = rows[i].querySelector('input[name="process[]"]');
+        var burstInput = rows[i].querySelector('input[name="burst[]"]');
+        if (processInput && processInput.value && burstInput && burstInput.value) {
+            processes.push(processInput.value);
+            bursts.push(parseInt(burstInput.value));
+        }
+    }
+    
+    // Calculate waiting times
+    var waiting = 0;
+    for (var i = 0; i < processes.length; i++) {
+        waitingTimes.push(waiting);
+        if (i < processes.length - 1) {
+            waiting += bursts[i];
+        }
+    }
+    
+    // Update table
+    for (var i = 0; i < rows.length; i++) {
+        var wtInput = rows[i].querySelector('.wt-col input');
+        if (wtInput && i < waitingTimes.length) {
+            wtInput.value = waitingTimes[i];
+        }
+    }
+    
+    // Show calculation steps
+    var steps = '<h6>FCFS Waiting Time Calculation:</h6>';
+    steps += '<p><b>Formula:</b> WT[i] = WT[i-1] + BT[i-1] (where WT[0] = 0)</p>';
+    steps += '<table class="table table-sm">';
+    steps += '<thead><tr><th>Process</th><th>Burst Time</th><th>Waiting Time</th><th>Calculation</th></tr></thead><tbody>';
+    
+    for (var i = 0; i < processes.length; i++) {
+        var calc = '';
+        if (i === 0) {
+            calc = 'WT[0] = 0 (First process)';
+        } else {
+            calc = 'WT[' + i + '] = ' + waitingTimes[i-1] + ' + ' + bursts[i-1] + ' = ' + waitingTimes[i];
+        }
+        steps += '<tr><td>' + processes[i] + '</td><td>' + bursts[i] + '</td><td>' + waitingTimes[i] + '</td><td>' + calc + '</td></tr>';
+    }
+    steps += '</tbody></table>';
+    
+    if (returnStepsOnly) return steps;
+    showCalculationModal('FCFS Waiting Time Calculation', steps);
+}
+
+// Calculate Waiting Time for SJF
+function calculateSJFWaitingTime(returnStepsOnly = false) {
+    // Show WT column
+    document.querySelectorAll('.wt-col').forEach(function(col) {
+        col.style.display = '';
+    });
+    
+    // Get all processes and burst times
+    var rows = document.querySelectorAll('#processTable tbody tr');
+    var processes = [];
+    var bursts = [];
+    
+    for (var i = 0; i < rows.length; i++) {
+        var processInput = rows[i].querySelector('input[name="process[]"]');
+        var burstInput = rows[i].querySelector('input[name="burst[]"]');
+        if (processInput && processInput.value && burstInput && burstInput.value) {
+            processes.push(processInput.value);
+            bursts.push(parseInt(burstInput.value));
+        }
+    }
+    
+    // Sort by burst time (SJF logic)
+    var paired = [];
+    for (var i = 0; i < processes.length; i++) {
+        paired.push([processes[i], bursts[i]]);
+    }
+    paired.sort(function(a, b) { return a[1] - b[1]; });
+    
+    // Calculate waiting times
+    var waitingTimes = [0];
+    for (var i = 1; i < paired.length; i++) {
+        waitingTimes.push(waitingTimes[i-1] + paired[i-1][1]);
+    }
+    
+    // Update table (need to match original order)
+    var originalOrder = [];
+    for (var i = 0; i < rows.length; i++) {
+        var processInput = rows[i].querySelector('input[name="process[]"]');
+        if (processInput && processInput.value) {
+            var processName = processInput.value;
+            // Find this process in sorted array
+            for (var j = 0; j < paired.length; j++) {
+                if (paired[j][0] === processName) {
+                    originalOrder.push(waitingTimes[j]);
+                    break;
+                }
+            }
+        }
+    }
+    
+    for (var i = 0; i < rows.length; i++) {
+        var wtInput = rows[i].querySelector('.wt-col input');
+        if (wtInput && i < originalOrder.length) {
+            wtInput.value = originalOrder[i];
+        }
+    }
+    
+    // Show calculation steps
+    var steps = '<h6>SJF Waiting Time Calculation:</h6>';
+    steps += '<p><b>Step 1:</b> Sort processes by burst time (shortest first)</p>';
+    steps += '<p><b>Step 2:</b> Calculate waiting time: WT[i] = WT[i-1] + BT[i-1] (where WT[0] = 0)</p>';
+    steps += '<table class="table table-sm">';
+    steps += '<thead><tr><th>Process (Sorted)</th><th>Burst Time</th><th>Waiting Time</th><th>Calculation</th></tr></thead><tbody>';
+    
+    for (var i = 0; i < paired.length; i++) {
+        var calc = '';
+        if (i === 0) {
+            calc = 'WT[0] = 0 (Shortest job first)';
+        } else {
+            calc = 'WT[' + i + '] = ' + waitingTimes[i-1] + ' + ' + paired[i-1][1] + ' = ' + waitingTimes[i];
+        }
+        steps += '<tr><td>' + paired[i][0] + '</td><td>' + paired[i][1] + '</td><td>' + waitingTimes[i] + '</td><td>' + calc + '</td></tr>';
+    }
+    steps += '</tbody></table>';
+    
+    if (returnStepsOnly) return steps;
+    showCalculationModal('SJF Waiting Time Calculation', steps);
+
+    // After showing calculation steps, rearrange table rows by burst time
+    var tableBody = document.querySelector('#processTable tbody');
+    var rowData = [];
+    rows.forEach(function(row, i) {
+        var processInput = row.querySelector('input[name="process[]"]');
+        var burstInput = row.querySelector('input[name="burst[]"]');
+        var wtInput = row.querySelector('.wt-col input');
+        if (processInput && burstInput && wtInput) {
+            rowData.push({
+                row: row,
+                burst: parseInt(burstInput.value) || 0
+            });
+        }
+    });
+    // Sort by burst time (smallest first)
+    rowData.sort(function(a, b) { return a.burst - b.burst; });
+    // Remove all rows
+    while (tableBody.firstChild) {
+        tableBody.removeChild(tableBody.firstChild);
+    }
+    // Append rows in sorted order
+    rowData.forEach(function(data) {
+        tableBody.appendChild(data.row);
+    });
+}
+
+// Calculate Waiting Time for Priority
+function calculatePriorityWaitingTime(returnStepsOnly = false) {
+    // Show WT column
+    document.querySelectorAll('.wt-col').forEach(function(col) {
+        col.style.display = '';
+    });
+
+    // Get all processes, burst times, and priorities
+    var rows = document.querySelectorAll('#processTable tbody tr');
+    var processes = [];
+    var bursts = [];
+    var priorities = [];
+    var originalIndexes = [];
+
+    for (var i = 0; i < rows.length; i++) {
+        var processInput = rows[i].querySelector('input[name="process[]"]');
+        var burstInput = rows[i].querySelector('input[name="burst[]"]');
+        var priorityInput = rows[i].querySelector('input[name="priority[]"]');
+        if (processInput && processInput.value && burstInput && burstInput.value && priorityInput && priorityInput.value) {
+            processes.push(processInput.value);
+            bursts.push(parseInt(burstInput.value));
+            priorities.push(parseInt(priorityInput.value));
+            originalIndexes.push(i); // Save original order
+        }
+    }
+
+    // Sort by priority (smallest first), then by original order (FCFS)
+    var paired = [];
+    for (var i = 0; i < processes.length; i++) {
+        paired.push([processes[i], bursts[i], priorities[i], originalIndexes[i]]);
+    }
+    paired.sort(function(a, b) {
+        if (a[2] !== b[2]) {
+            return a[2] - b[2]; // priority
+        } else {
+            return a[3] - b[3]; // original order (FCFS)
+        }
+    });
+
+    // Calculate waiting times
+    var waitingTimes = [0];
+    for (var i = 1; i < paired.length; i++) {
+        waitingTimes.push(waitingTimes[i-1] + paired[i-1][1]);
+    }
+
+    // Update table (need to match sorted order)
+    for (var i = 0; i < paired.length; i++) {
+        var row = rows[paired[i][3]]; // original row
+        var wtInput = row.querySelector('.wt-col input');
+        if (wtInput) {
+            wtInput.value = waitingTimes[i];
+        }
+    }
+
+    // Show calculation steps
+    var steps = '<h6>Priority Waiting Time Calculation:</h6>';
+    steps += '<p><b>Step 1:</b> Sort processes by priority (highest priority first, FCFS for ties)</p>';
+    steps += '<p><b>Step 2:</b> Calculate waiting time: WT[i] = WT[i-1] + BT[i-1] (where WT[0] = 0)</p>';
+    steps += '<table class="table table-sm">';
+    steps += '<thead><tr><th>Process (Sorted)</th><th>Burst Time</th><th>Priority</th><th>Waiting Time</th><th>Calculation</th></tr></thead><tbody>';
+
+    for (var i = 0; i < paired.length; i++) {
+        var calc = '';
+        if (i === 0) {
+            calc = 'WT[0] = 0 (Highest priority first)';
+        } else {
+            calc = 'WT[' + i + '] = ' + waitingTimes[i-1] + ' + ' + paired[i-1][1] + ' = ' + waitingTimes[i];
+        }
+        steps += '<tr><td>' + paired[i][0] + '</td><td>' + paired[i][1] + '</td><td>' + paired[i][2] + '</td><td>' + waitingTimes[i] + '</td><td>' + calc + '</td></tr>';
+    }
+    steps += '</tbody></table>';
+
+    if (returnStepsOnly) return steps;
+
+    showCalculationModal('Priority Waiting Time Calculation', steps);
+
+    // After sorting and calculating waiting times, rearrange table rows by priority and FCFS
+    var tableBody = document.querySelector('#processTable tbody');
+    var rowData = [];
+    for (var i = 0; i < paired.length; i++) {
+        rowData.push({
+            row: rows[paired[i][3]],
+            priority: paired[i][2],
+            originalIndex: paired[i][3]
+        });
+    }
+    // Remove all rows
+    while (tableBody.firstChild) {
+        tableBody.removeChild(tableBody.firstChild);
+    }
+    // Append rows in sorted order
+    rowData.forEach(function(data) {
+        tableBody.appendChild(data.row);
+    });
+}
+
+// Calculate Turnaround Time for any algorithm
+function calculateTurnaroundTime(returnStepsOnly = false) {
+    // Show TT column if not already shown
+    var ttCols = document.querySelectorAll('.tt-col');
+    if (ttCols.length === 0) {
+        // Add TT column to table
+        var headerRow = document.querySelector('#processTable thead tr');
+        var ttHeader = document.createElement('th');
+        ttHeader.className = 'tt-col';
+        ttHeader.textContent = 'Turnaround Time';
+        headerRow.insertBefore(ttHeader, headerRow.lastElementChild);
+        
+        // Add TT column to each row
+        var rows = document.querySelectorAll('#processTable tbody tr');
+        rows.forEach(function(row) {
+            var ttCell = document.createElement('td');
+            ttCell.className = 'tt-col';
+            var ttInput = document.createElement('input');
+            ttInput.type = 'number';
+            ttInput.className = 'form-control';
+            ttInput.readOnly = true;
+            ttCell.appendChild(ttInput);
+            row.insertBefore(ttCell, row.lastElementChild);
+        });
+    }
+    
+    // Get all processes, burst times, and waiting times
+    var rows = document.querySelectorAll('#processTable tbody tr');
+    var processes = [];
+    var bursts = [];
+    var waitingTimes = [];
+    var turnaroundTimes = [];
+    
+    for (var i = 0; i < rows.length; i++) {
+        var processInput = rows[i].querySelector('input[name="process[]"]');
+        var burstInput = rows[i].querySelector('input[name="burst[]"]');
+        var wtInput = rows[i].querySelector('.wt-col input');
+        
+        if (processInput && processInput.value && burstInput && burstInput.value && wtInput && wtInput.value) {
+            processes.push(processInput.value);
+            bursts.push(parseInt(burstInput.value));
+            waitingTimes.push(parseInt(wtInput.value));
+        }
+    }
+    
+    // Calculate turnaround times
+    for (var i = 0; i < processes.length; i++) {
+        var turnaround = bursts[i] + waitingTimes[i];
+        turnaroundTimes.push(turnaround);
+    }
+    
+    // Update table
+    for (var i = 0; i < rows.length; i++) {
+        var ttInput = rows[i].querySelector('.tt-col input');
+        if (ttInput && i < turnaroundTimes.length) {
+            ttInput.value = turnaroundTimes[i];
+        }
+    }
+    
+    // Show calculation steps
+    var algo = document.getElementById('algorithm').value;
+    var algoName = algo.toUpperCase();
+    var steps = '<h6>' + algoName + ' Turnaround Time Calculation:</h6>';
+    steps += '<p><b>Formula:</b> TT[i] = BT[i] + WT[i]</p>';
+    steps += '<table class="table table-sm">';
+    steps += '<thead><tr><th>Process</th><th>Burst Time</th><th>Waiting Time</th><th>Turnaround Time</th><th>Calculation</th></tr></thead><tbody>';
+    
+    for (var i = 0; i < processes.length; i++) {
+        var calc = 'TT[' + i + '] = ' + bursts[i] + ' + ' + waitingTimes[i] + ' = ' + turnaroundTimes[i];
+        steps += '<tr><td>' + processes[i] + '</td><td>' + bursts[i] + '</td><td>' + waitingTimes[i] + '</td><td>' + turnaroundTimes[i] + '</td><td>' + calc + '</td></tr>';
+    }
+    steps += '</tbody></table>';
+    
+    if (returnStepsOnly) return steps;
+    showCalculationModal(algoName + ' Turnaround Time Calculation', steps);
+}
+
+// Update the calculateColumn function
+function calculateColumn(type) {
+    var algo = document.getElementById('algorithm').value;
+    if (type === 'waiting') {
+        if (algo === 'fcfs') {
+            calculateFCFSWaitingTime();
+        } else if (algo === 'sjf') {
+            calculateSJFWaitingTime();
+        } else if (algo === 'priority') {
+            calculatePriorityWaitingTime();
+        }
+    } else if (type === 'burst') {
+        calculateTurnaroundTime();
+    }
+}
+
+// Update button text based on algorithm
+function updateButtonText() {
+    var algo = document.getElementById('algorithm').value;
+    var burstBtn = document.getElementById('burstBtn');
+    if (algo === 'fcfs' || algo === 'sjf' || algo === 'priority') {
+        burstBtn.innerText = 'Calculate Turnaround Time';
+    } else {
+        burstBtn.innerText = 'Calculate Burst Time';
+    }
+}
+document.getElementById('algorithm').addEventListener('change', function() {
+    updatePriorityColumn();
+    updateButtonText();
+});
+window.onload = function() {
+    updatePriorityColumn();
+    updateButtonText();
+};
+
+// Show calculation steps in a modal
+function showCalculationModal(title, stepsHtml) {
+    document.getElementById('calcModalLabel').innerText = title;
+    document.getElementById('calcModalBody').innerHTML = stepsHtml;
+    var modal = new bootstrap.Modal(document.getElementById('calcModal'));
+    modal.show();
+}
+
+function calculateAverage(type) {
+    var rows = document.querySelectorAll('#processTable tbody tr');
+    var values = [];
+    var label = '';
+    if (type === 'waiting') {
+        label = 'Waiting Time';
+        rows.forEach(function(row) {
+            var wtInput = row.querySelector('.wt-col input');
+            if (wtInput && wtInput.value !== '') {
+                values.push(Number(wtInput.value));
+            }
+        });
+    } else if (type === 'burst') {
+        label = 'Burst Time';
+        rows.forEach(function(row) {
+            var burstInput = row.querySelector('input[name="burst[]"]');
+            if (burstInput && burstInput.value !== '') {
+                values.push(Number(burstInput.value));
+            }
+        });
+    }
+    if (values.length === 0) {
+        alert('No values to calculate.');
+        return;
+    }
+    var sum = values.reduce((a, b) => a + b, 0);
+    var avg = (sum / values.length).toFixed(2);
+    // Build step-by-step HTML
+    var steps = `<b>Step 1:</b> List all ${label}s: <br> [${values.join(', ')}]<br><br>`;
+    steps += `<b>Step 2:</b> Sum all ${label}s: <br> ${values.join(' + ')} = ${sum}<br><br>`;
+    steps += `<b>Step 3:</b> Divide by number of processes: <br> ${sum} / ${values.length} = <b>${avg}</b>`;
+    showCalculationModal(`Average ${label} Calculation`, steps);
+}
+
+document.getElementById('schedulingForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    var algo = document.getElementById('algorithm').value;
+    var wtSteps = '';
+    if (algo === 'fcfs') {
+        wtSteps = calculateFCFSWaitingTime(true);
+    } else if (algo === 'sjf') {
+        wtSteps = calculateSJFWaitingTime(true);
+    } else if (algo === 'priority') {
+        wtSteps = calculatePriorityWaitingTime(true);
+    }
+    var trtSteps = calculateTurnaroundTime(true);
+    showCalculationModal('Calculation Steps', wtSteps + '<hr>' + trtSteps);
+});
+</script>
+{% endblock %} 
